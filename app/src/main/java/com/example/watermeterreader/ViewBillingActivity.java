@@ -1,17 +1,18 @@
 package com.example.watermeterreader;
 
-import androidx.appcompat.app.AppCompatActivity;
 import android.database.Cursor;
 import android.os.Bundle;
-import android.widget.ArrayAdapter;
-import android.widget.ListView;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.DividerItemDecoration;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 import com.example.watermeterreader.R;
 import com.example.watermeterreader.db.DatabaseHelper;
-import java.util.ArrayList;
+import com.example.watermeterreader.ui.BillingAdapter;
 
 public class ViewBillingActivity extends AppCompatActivity {
-
-    private ListView lvBilling;
+    private RecyclerView rvBilling;
+    private BillingAdapter adapter;
     private DatabaseHelper dbHelper;
 
     @Override
@@ -19,34 +20,23 @@ public class ViewBillingActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_view_billing);
 
-        lvBilling = findViewById(R.id.lvBilling);
-        dbHelper = new DatabaseHelper(this);
+        rvBilling = findViewById(R.id.rvBilling);
+        dbHelper  = new DatabaseHelper(this);
 
-        loadBillingData();
+        // Layout manager + divider
+        rvBilling.setLayoutManager(new LinearLayoutManager(this));
+        rvBilling.addItemDecoration(new DividerItemDecoration(this, DividerItemDecoration.VERTICAL));
+
+        // Load data
+        Cursor cursor = dbHelper.getBillingList();
+        adapter = new BillingAdapter(cursor);
+        rvBilling.setAdapter(adapter);
     }
 
-    private void loadBillingData() {
-        ArrayList<String> billingList = new ArrayList<>();
-        Cursor cursor = dbHelper.getBillingList();
-        if(cursor != null && cursor.moveToFirst()){
-            do {
-                // Get billing details (ID, House Number, Amount, Date) and household owner's name if available
-                int billingId = cursor.getInt(0);
-                String houseNumber = cursor.getString(1);
-                double amount = cursor.getDouble(2);
-                String billingDate = cursor.getString(3);
-                String firstName = cursor.getString(4);
-                String lastName = cursor.getString(5);
-
-                String record = "ID: " + billingId + "\nHouse: " + houseNumber +
-                        "\nOwner: " + (firstName != null ? firstName + " " + lastName : "N/A") +
-                        "\nAmount: $" + amount + "\nDate: " + billingDate;
-                billingList.add(record);
-            } while(cursor.moveToNext());
-            cursor.close();
-        }
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_list_item_1, billingList);
-        lvBilling.setAdapter(adapter);
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Close cursor to prevent leaks
+        adapter.swapCursor(null);
     }
 }

@@ -13,9 +13,11 @@ import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.view.View;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -31,6 +33,10 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
 
 import android.Manifest;
 
+import java.text.DateFormat;
+import java.util.Date;
+import java.util.List;
+
 
 public class UserDashboardActivity extends AppCompatActivity {
 
@@ -43,6 +49,7 @@ public class UserDashboardActivity extends AppCompatActivity {
     private EditText etHouseNumber;
     private Bitmap capturedBitmap;
     private DatabaseHelper dbHelper;
+    private Spinner spinnerHouseNumbers;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,7 +64,27 @@ public class UserDashboardActivity extends AppCompatActivity {
         btnSaveReading   = findViewById(R.id.btnSaveReading);
         ivMeterImage     = findViewById(R.id.ivMeterImage);
         tvRecognizedText = findViewById(R.id.tvRecognizedText);
-        etHouseNumber    = findViewById(R.id.etHouseNumber);
+
+        spinnerHouseNumbers = findViewById(R.id.spinnerHouseNumbers);
+        // 1) Load “House — Suburb” strings
+        List<String> houses = dbHelper.getHouseDisplayList();
+        if (houses.isEmpty()) {
+            Toast.makeText(this,
+                    "No households available. Please ask admin to add some.",
+                    Toast.LENGTH_LONG).show();
+        } else {
+            ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                    this,
+                    android.R.layout.simple_spinner_item,
+                    houses
+            );
+            adapter.setDropDownViewResource(
+                    android.R.layout.simple_spinner_dropdown_item
+            );
+            spinnerHouseNumbers.setAdapter(adapter);
+        }
+
+//        etHouseNumber    = findViewById(R.id.etHouseNumber);
 
         btnCapture.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -136,30 +163,59 @@ public class UserDashboardActivity extends AppCompatActivity {
     }
 
     private void saveMeterReading() {
-        String houseNumber = etHouseNumber.getText().toString().trim();
-        String readingStr  = tvRecognizedText.getText().toString().trim();
-        if(houseNumber.isEmpty() || readingStr.isEmpty()) {
-            Toast.makeText(this, "House number or reading is empty", Toast.LENGTH_SHORT).show();
+        // 1) Get selected house (e.g. "123 — Springfield")
+        String selected = (String) spinnerHouseNumbers.getSelectedItem();
+        if (selected == null) {
+            Toast.makeText(this, "Please choose a house.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String houseNumber = selected.split(" \u2014 ")[0];
+
+        // 2) Read the OCR result
+        String readingStr = tvRecognizedText.getText().toString().trim();
+        if (readingStr.isEmpty()) {
+            Toast.makeText(this, "No meter reading to save.", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        double readingValue;
+        double newReading;
         try {
-            readingValue = Double.parseDouble(readingStr);
+            newReading = Double.parseDouble(readingStr);
         } catch (NumberFormatException e) {
             Toast.makeText(this, "Invalid reading value", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // Get current date and time
-        String currentDate = java.text.DateFormat.getDateTimeInstance().format(new java.util.Date());
-        long result = dbHelper.addMeterReading(houseNumber, readingValue, currentDate);
-        if(result != -1) {
-            // Calculate and save billing
-            dbHelper.calculateAndSaveBill(houseNumber, readingValue, currentDate);
-            Toast.makeText(this, "Meter reading saved successfully!", Toast.LENGTH_SHORT).show();
-        } else {
+        // 3) Fetch the *previous* reading BEFORE inserting
+        double lastReading = dbHelper.getLastReading(houseNumber);
+
+        // 4) Insert the new reading
+        String currentDate = DateFormat.getDateTimeInstance().format(new Date());
+        long insertResult = dbHelper.addMeterReading(houseNumber, newReading, currentDate);
+        if (insertResult == -1) {
             Toast.makeText(this, "Failed to save meter reading", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 5) Calculate consumption and billing
+        double consumption = newReading - lastReading;           // kiloliters used
+        double rate        = 0.00055;                               // your rate per kL
+        double billAmount  = consumption * rate;                 // total bill
+
+        // 6) Store the billing record
+        long billResult = dbHelper.addBilling(houseNumber, billAmount, currentDate);
+        if (billResult != -1) {
+            Toast.makeText(this, String.format(
+                            "Saved! Consumed: %.2f kL, Bill: $%.2f",
+                            consumption, billAmount),
+                    Toast.LENGTH_LONG
+            ).show();
+        } else {
+            Toast.makeText(this, "Failed to save billing record", Toast.LENGTH_SHORT).show();
         }
     }
+
+
+
+
 }

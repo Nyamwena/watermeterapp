@@ -170,9 +170,33 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     // Retrieve billing list joining billing and household details
     public Cursor getBillingList() {
         SQLiteDatabase db = this.getReadableDatabase();
-        // Joining billing with household to get owner names
-        return db.rawQuery("SELECT billing.id, billing.house_number, billing.amount, billing.billing_date, " +
-                "household.first_name, household.last_name " +
-                "FROM billing LEFT JOIN household ON billing.house_number = household.house_number", null);
+        return db.rawQuery(
+                "SELECT billing.id, billing.house_number, billing.amount, billing.billing_date, " +
+                        "household.first_name, household.last_name, household.suburb_name " +
+                        "FROM billing " +
+                        "LEFT JOIN household ON billing.house_number = household.house_number",
+                null
+        );
     }
+
+
+    public List<String> getHouseDisplayList() {
+        List<String> displayList = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery(
+                "SELECT house_number, suburb_name FROM household",
+                null
+        );
+        if (cursor.moveToFirst()) {
+            do {
+                String houseNum = cursor.getString(0);
+                String suburb   = cursor.getString(1);
+                // Format: "123 — Springfield"
+                displayList.add(houseNum + " \u2014 " + suburb);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        return displayList;
+    }
+
 }
